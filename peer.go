@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/hashicorp/memberlist"
 	"github.com/tsingsun/woocoo/pkg/log"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"math/rand"
 	"net"
@@ -41,9 +42,8 @@ type Peer struct {
 	shards map[string]Shard
 	mu     sync.RWMutex
 
+	msgc     chan []byte
 	delegate *delegate
-
-	ctx context.Context
 }
 
 func NewPeer(opts ...Option) (*Peer, error) {
@@ -54,6 +54,7 @@ func NewPeer(opts ...Option) (*Peer, error) {
 	p := &Peer{
 		Options:       options,
 		membersConfig: memberlist.DefaultLocalConfig(),
+		msgc:          make(chan []byte, 100),
 	}
 
 	p.apply()
@@ -124,7 +125,6 @@ func (p *Peer) AddShard(sd Shard) (Spreader, error) {
 }
 
 func (p *Peer) Join(ctx context.Context) error {
-	p.ctx = ctx
 	t := time.NewTicker(p.JoinTTL)
 	count := 0
 	for {
@@ -148,9 +148,16 @@ func (p *Peer) Join(ctx context.Context) error {
 	}
 }
 
+func (p *Peer) Start(ctx context.Context) error {
+	return p.ReliableMsgHandle(ctx)
+}
+
 func (p *Peer) Stop(ctx context.Context) error {
-	p.members.Leave(0)
-	p.members.Shutdown()
+	if p.members != nil {
+		p.members.Leave(0)
+		p.members.Shutdown()
+	}
+	close(p.msgc)
 	return nil
 }
 
@@ -163,6 +170,42 @@ func (p *Peer) OthersNodes() []*memberlist.Node {
 		}
 	}
 	return nodes
+}
+
+func (p *Peer) SendReliable(b []byte) {
+	p.msgc <- b
+}
+
+func (p *Peer) ReliableMsgHandle(ctx context.Context) error {
+	var wg sync.WaitGroup
+	for {
+		select {
+		case b, ok := <-p.msgc:
+			if !ok {
+				return nil
+			}
+			for _, node := range p.OthersNodes() {
+				wg.Add(1)
+				go func(n *memberlist.Node) {
+					defer wg.Done()
+					if err := p.members.SendReliable(n, b); err != nil {
+						logger.Error("channel broadcast error", zap.Error(err))
+						return
+					}
+				}(node)
+			}
+
+			wg.Wait()
+		case <-ctx.Done():
+			return nil
+		}
+	}
+}
+
+// OversizedMessage indicates whether or not the byte payload should be sent
+// via TCP.
+func OversizedMessage(b []byte, size int) bool {
+	return len(b) > size/2
 }
 
 func lookupIPAddr(host string, ipv6 bool) (addr string, err error) {

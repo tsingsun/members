@@ -2,10 +2,7 @@ package members
 
 import (
 	"context"
-	"github.com/hashicorp/memberlist"
 	"github.com/vmihailenco/msgpack/v5"
-	"go.uber.org/zap"
-	"sync"
 )
 
 // Spreader is an interface for transporting messages to other nodes in the cluster.
@@ -37,7 +34,6 @@ func NewChannel(shardName string, peer *Peer) (*Channel, error) {
 		peer:      peer,
 		msgc:      make(chan []byte, 200),
 	}
-	go c.Start(peer.ctx)
 	return c, nil
 }
 
@@ -48,48 +44,11 @@ func (c *Channel) Broadcast(msg []byte) error {
 		return err
 	}
 	if OversizedMessage(b, c.peer.membersConfig.UDPBufferSize) {
-		select {
-		case c.msgc <- b:
-		default:
-		}
+		c.peer.SendReliable(b)
 	} else {
 		c.peer.delegate.broadcasts.QueueBroadcast(broadcast(b))
 	}
 	return nil
-}
-
-// OversizedMessage indicates whether or not the byte payload should be sent
-// via TCP.
-func OversizedMessage(b []byte, size int) bool {
-	return len(b) > size/2
-}
-
-// Start listen message channel which prevents memberlist from opening too many parallel
-// TCP connections to its peers.
-func (c *Channel) Start(ctx context.Context) error {
-	var wg sync.WaitGroup
-	for {
-		select {
-		case b, ok := <-c.msgc:
-			if !ok {
-				return nil
-			}
-			for _, node := range c.peer.OthersNodes() {
-				wg.Add(1)
-				go func(n *memberlist.Node) {
-					defer wg.Done()
-					if err := c.peer.members.SendReliable(n, b); err != nil {
-						logger.Error("channel broadcast error", zap.Error(err))
-						return
-					}
-				}(node)
-			}
-
-			wg.Wait()
-		case <-ctx.Done():
-			return nil
-		}
-	}
 }
 
 // Stop stops the channel.

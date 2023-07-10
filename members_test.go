@@ -84,6 +84,8 @@ type testSuite struct {
 	handlers   map[string]*orderHandler
 	knownPeers []string
 	peers      map[string]*Peer
+	ctx        context.Context
+	cancel     context.CancelFunc
 }
 
 func (t *testSuite) defaultCnf() {
@@ -109,7 +111,7 @@ func (t *testSuite) SetupSuite() {
 	if t.cnf == nil {
 		t.defaultCnf()
 	}
-
+	t.ctx, t.cancel = context.WithCancel(context.Background())
 	init := func(id string) {
 		cnf := t.cnf.Copy()
 		cnf.Parser().Set("options.id", id)
@@ -145,6 +147,7 @@ func (t *testSuite) SetupSuite() {
 
 		t.knownPeers = append(t.knownPeers, group.Address())
 		t.peers[id] = group
+		go group.Start(t.ctx)
 	}
 	// node 1
 	init("node1")
@@ -161,6 +164,7 @@ func (t *testSuite) TearDownSuite() {
 	for _, peer := range t.peers {
 		_ = peer.Stop(context.Background())
 	}
+	t.cancel()
 }
 
 func (t *testSuite) TestBroadcast() {
