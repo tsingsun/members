@@ -1,0 +1,5 @@
+members:
+  options:
+    known: ["localhost"]
+  # github.com/hashicorp/memberlist Config
+  config:
