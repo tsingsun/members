@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/hashicorp/memberlist v0.5.0
 	github.com/stretchr/testify v1.8.3
-	github.com/tsingsun/woocoo v0.3.1-0.20230705134405-2f051599bedf
+	github.com/tsingsun/woocoo v0.3.1-0.20230710030305-2fae153355b0
 	github.com/vmihailenco/msgpack/v5 v5.3.5
 	go.uber.org/zap v1.24.0
 )

@@ -83,6 +83,6 @@ func (o OrderHandler) Receive(ord string) error {
 
 ```
 
-plz See [example](https://github.com/tsingsun/members/example)
+plz See [example](./example)
 
 Notice: The Best Practice is to use array object and version control to sync the data.
