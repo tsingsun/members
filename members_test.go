@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/suite"
 	"github.com/tsingsun/woocoo/pkg/conf"
-	"github.com/tsingsun/woocoo/pkg/log"
 	"github.com/tsingsun/woocoo/testco/wctest"
 	"github.com/vmihailenco/msgpack/v5"
 	"sync"
@@ -26,6 +25,7 @@ func newOrderHandler() *orderHandler {
 }
 
 type orderHandler struct {
+	name string
 	Spreader
 	orders map[int]*order
 	mu     sync.RWMutex
@@ -33,11 +33,20 @@ type orderHandler struct {
 }
 
 func (o *orderHandler) Name() string {
+	if o.name != "" {
+		return o.name
+	}
 	return "order"
 }
 
 func (o *orderHandler) MarshalBinary() ([]byte, error) {
-	return msgpack.Marshal(o.orders)
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	ors := make([]*order, 0, len(o.orders))
+	for _, ord := range o.orders {
+		ors = append(ors, ord)
+	}
+	return msgpack.Marshal(ors)
 }
 
 func (o *orderHandler) Merge(b []byte) error {
@@ -49,7 +58,7 @@ func (o *orderHandler) Merge(b []byte) error {
 	defer o.mu.Unlock()
 	for _, or := range ors {
 		o.orders[or.OrderID] = or
-		log.Info(fmt.Sprintf("%s merge order %v", o.tag, or))
+		logger.Info(fmt.Sprintf("%s merge order %v", o.tag, or))
 	}
 	return nil
 }
@@ -63,6 +72,10 @@ func (o *orderHandler) Receive(ord *order) error {
 		return err
 	}
 	return o.Spreader.Broadcast(bs)
+}
+
+type exOrder struct {
+	orderHandler
 }
 
 type testSuite struct {
@@ -103,6 +116,7 @@ func (t *testSuite) SetupSuite() {
 		group, err := NewPeer(WithConfiguration(cnf))
 		t.Require().NoError(err)
 		group.Options.KnownPeers = t.knownPeers
+
 		orderhdl := newOrderHandler()
 		orderhdl.tag = id
 		err = group.Join(context.Background())
@@ -111,6 +125,24 @@ func (t *testSuite) SetupSuite() {
 		t.Require().NoError(err)
 		orderhdl.Spreader = sd
 		t.handlers[id] = orderhdl
+
+		exOrderhdl := &exOrder{}
+		exOrderhdl.name = "exorder"
+		exOrderhdl.orders = make(map[int]*order)
+		exOrderhdl.orders = map[int]*order{
+			1: {
+				OrderID:   10,
+				OrderName: "exorder1",
+			},
+			2: {
+				OrderID:   20,
+				OrderName: "exorder2",
+			},
+		}
+		exOrderhdl.tag = id
+		exOrderhdl.Spreader, err = group.AddShard(exOrderhdl)
+		t.Require().NoError(err)
+
 		t.knownPeers = append(t.knownPeers, group.Address())
 		t.peers[id] = group
 	}
@@ -143,12 +175,15 @@ func (t *testSuite) TestBroadcast() {
 	handler := t.handlers["node1"]
 	err := handler.Receive(ord)
 	t.Require().NoError(err)
+	ord.OrderID = 2
+	handler.Receive(ord)
+	t.Require().NoError(err)
 	_ = wctest.RunWait(t.T(), time.Second*2, func() error {
 		return nil
 	})
-	t.Len(handler.orders, 1)
+	t.Len(handler.orders, 2)
 	handler2 := t.handlers["node2"]
-	t.Len(handler2.orders, 1)
+	t.Len(handler2.orders, 2)
 	handler3 := t.handlers["node3"]
-	t.Len(handler3.orders, 1)
+	t.Len(handler3.orders, 2)
 }

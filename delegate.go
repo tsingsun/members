@@ -1,9 +1,12 @@
 package members
 
 import (
+	"bytes"
+	"errors"
 	"github.com/hashicorp/memberlist"
 	"github.com/vmihailenco/msgpack/v5"
 	"go.uber.org/zap"
+	"io"
 	"sync"
 )
 
@@ -34,8 +37,16 @@ func newDelegate(peer *Peer) *delegate {
 }
 
 func (d *delegate) AddShard(sd Shard) (Spreader, error) {
+	sdn := sd.Name()
+	if sdn == "" {
+		return nil, errors.New("shard name is empty")
+	}
 	d.mu.Lock()
-	d.shards[sd.Name()] = sd
+	if _, ok := d.shards[sdn]; ok {
+		d.mu.Unlock()
+		return nil, errors.New("shard name is exist")
+	}
+	d.shards[sdn] = sd
 	d.mu.Unlock()
 
 	if d.shards == nil {
@@ -91,33 +102,37 @@ func (d *delegate) GetBroadcasts(overhead, limit int) [][]byte {
 }
 
 func (d *delegate) LocalState(join bool) []byte {
-	ps := make([]*Payload, 0, len(d.shards))
+	var buf bytes.Buffer
+	enc := msgpack.NewEncoder(&buf)
 	for s, shard := range d.shards {
 		b, err := shard.MarshalBinary()
 		if err != nil {
 			logger.Warn("LocalState: encode error", zap.Error(err), zap.String("shard", s))
 			return nil
 		}
-		ps = append(ps, &Payload{Key: s, Data: b})
+		if err = enc.Encode(&Payload{Key: s, Data: b}); err != nil {
+			logger.Warn("LocalState: encode error", zap.Error(err))
+			return nil
+		}
 	}
-	data, err := msgpack.Marshal(ps)
-	if err != nil {
-		logger.Warn("LocalState: encode error", zap.Error(err))
-		return nil
-	}
-	return data
+	return buf.Bytes()
 }
 
 func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 	if len(buf) == 0 {
 		return
 	}
-	ps := make([]*Payload, 0, len(d.shards))
-	if err := msgpack.Unmarshal(buf, &ps); err != nil {
-		logger.Warn("MergeRemoteState: decode error", zap.Error(err))
-		return
-	}
-	for _, p := range ps {
+	dec := msgpack.NewDecoder(bytes.NewReader(buf))
+	for {
+		var p Payload
+		err := dec.Decode(&p)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			logger.Warn("MergeRemoteState: decode error", zap.Error(err))
+			continue
+		}
 		sd, ok := d.GetShard(p.Key)
 		if !ok {
 			continue
