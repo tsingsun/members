@@ -11,7 +11,10 @@ type Spreader interface {
 	Broadcast([]byte) error
 }
 
-var _ Spreader = (*Channel)(nil)
+var (
+	_ Spreader = (*Channel)(nil)
+	_ Spreader = (*NoopSpreader)(nil)
+)
 
 // Channel is a channel for communication between shard holding nodes.
 type Channel struct {
@@ -52,6 +55,12 @@ func (c *Channel) Broadcast(msg []byte) error {
 }
 
 // Stop stops the channel.
-func (c *Channel) Stop(ctx context.Context) error {
+func (c *Channel) Stop(_ context.Context) error {
+	return nil
+}
+
+type NoopSpreader struct{}
+
+func (n *NoopSpreader) Broadcast([]byte) error {
 	return nil
 }
