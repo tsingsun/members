@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/suite"
 	"github.com/tsingsun/woocoo/pkg/conf"
-	"github.com/tsingsun/woocoo/testco/wctest"
+	"github.com/tsingsun/woocoo/test/wctest"
 	"github.com/vmihailenco/msgpack/v5"
 	"sync"
 	"testing"
