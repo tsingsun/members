@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/suite"
 	"github.com/tsingsun/woocoo/pkg/conf"
-	"github.com/tsingsun/woocoo/test/wctest"
 	"github.com/vmihailenco/msgpack/v5"
 	"sync"
 	"testing"
@@ -182,9 +181,13 @@ func (t *testSuite) TestBroadcast() {
 	ord.OrderID = 2
 	handler.Receive(ord)
 	t.Require().NoError(err)
-	_ = wctest.RunWait(t.T(), time.Second*2, func() error {
-		return nil
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	time.AfterFunc(time.Second*2, func() {
+		wg.Done()
 	})
+	wg.Wait()
 	t.Len(handler.orders, 2)
 	handler2 := t.handlers["node2"]
 	t.Len(handler2.orders, 2)
