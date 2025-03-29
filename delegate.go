@@ -31,7 +31,7 @@ func newDelegate(peer *Peer) *delegate {
 
 	d.broadcasts = &memberlist.TransmitLimitedQueue{
 		NumNodes:       peer.MemberCount,
-		RetransmitMult: peer.membersConfig.RetransmitMult,
+		RetransmitMult: peer.MembersConfig.RetransmitMult,
 	}
 	return d
 }

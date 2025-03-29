@@ -2,21 +2,16 @@ package members
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/hashicorp/memberlist"
 	"github.com/tsingsun/woocoo/pkg/log"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"math/rand"
-	"net"
-	"os"
-	"strconv"
 	"sync"
 	"time"
 )
 
-var logger = log.Component("members")
+var logger = log.Component("memberlist")
 
 var defaultOption = Options{
 	JoinTTL:   time.Second * 1,
@@ -36,8 +31,7 @@ type Shard interface {
 // Peer is a memberlist Node wrapper
 type Peer struct {
 	Options
-	members       *memberlist.Memberlist
-	membersConfig *memberlist.Config
+	members *memberlist.Memberlist
 
 	shards map[string]Shard
 	mu     sync.RWMutex
@@ -48,17 +42,17 @@ type Peer struct {
 
 func NewPeer(opts ...Option) (*Peer, error) {
 	options := defaultOption
+	options.MembersConfig = memberlist.DefaultLANConfig()
 	for _, o := range opts {
 		o(&options)
 	}
 	p := &Peer{
-		Options:       options,
-		membersConfig: memberlist.DefaultLocalConfig(),
-		msgc:          make(chan []byte, 100),
+		Options: options,
+		msgc:    make(chan []byte, 100),
 	}
 
 	p.apply()
-	ml, err := memberlist.Create(p.membersConfig)
+	ml, err := memberlist.Create(p.MembersConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -69,47 +63,18 @@ func NewPeer(opts ...Option) (*Peer, error) {
 
 func (p *Peer) apply() {
 	var err error
-	if p.Cnf != nil {
-		if p.Cnf.IsSet("options") {
-			if err = p.Cnf.Sub("options").Unmarshal(&p.Options); err != nil {
-				panic(err)
-			}
-		}
-		if p.Cnf.IsSet("memberList") {
-			if err = p.Cnf.Sub("memberList").Unmarshal(p.membersConfig); err != nil {
+	if p.cnf != nil {
+		if p.cnf.IsSet("options") {
+			if err = p.cnf.Sub("options").Unmarshal(&p.Options); err != nil {
 				panic(err)
 			}
 		}
 	}
-	if p.Options.ID != "" {
-		p.membersConfig.Name = p.Options.ID
-	} else {
-		hostname, _ := os.Hostname()
-		p.membersConfig.Name = hostname + "-" + strconv.Itoa(rand.Intn(1000))
-	}
-	if p.membersConfig.BindAddr != "" {
-		p.membersConfig.BindAddr, err = lookupIPAddr(p.membersConfig.BindAddr, false)
-		if err != nil {
-			panic(err)
-		}
-	}
-	if len(p.Options.KnownPeers) > 0 {
-		rps := make([]string, 0, len(p.Options.KnownPeers))
-		for _, peer := range p.Options.KnownPeers {
-			ad, err := lookupIPAddr(peer, false)
-			if err != nil {
-				continue
-			}
-			rps = append(rps, ad)
-		}
-		p.Options.KnownPeers = rps
-	}
+	p.MembersConfig.LogOutput = logger.Logger().IOWriter(zapcore.DebugLevel)
 
-	p.membersConfig.LogOutput = logger.Logger().IOWriter(zapcore.DebugLevel)
-
-	p.membersConfig.Events = &event{}
+	p.MembersConfig.Events = &event{}
 	p.delegate = newDelegate(p)
-	p.membersConfig.Delegate = p.delegate
+	p.MembersConfig.Delegate = p.delegate
 }
 
 func (p *Peer) Address() string {
@@ -124,6 +89,7 @@ func (p *Peer) AddShard(sd Shard) (Spreader, error) {
 	return p.delegate.AddShard(sd)
 }
 
+// Join other nodes, whatever exists peers not set.
 func (p *Peer) Join(ctx context.Context) error {
 	t := time.NewTicker(p.JoinTTL)
 	count := 0
@@ -139,7 +105,7 @@ func (p *Peer) Join(ctx context.Context) error {
 			if count > p.JoinRetry {
 				return fmt.Errorf("join retry timeout")
 			}
-			_, err := p.members.Join(p.KnownPeers)
+			_, err := p.members.Join(p.ExistsPeers)
 			if err != nil {
 				continue
 			}
@@ -154,7 +120,7 @@ func (p *Peer) Start(ctx context.Context) error {
 
 func (p *Peer) Stop(ctx context.Context) error {
 	if p.members != nil {
-		p.members.Leave(0)
+		p.members.Leave(p.JoinTTL)
 		p.members.Shutdown()
 	}
 	close(p.msgc)
@@ -172,6 +138,7 @@ func (p *Peer) OthersNodes() []*memberlist.Node {
 	return nodes
 }
 
+// SendReliable uses sending large message (see OversizedMessage) to other nodes. It calls memberlist.SendReliable.
 func (p *Peer) SendReliable(b []byte) {
 	p.msgc <- b
 }
@@ -202,38 +169,8 @@ func (p *Peer) ReliableMsgHandle(ctx context.Context) error {
 	}
 }
 
-// OversizedMessage indicates whether or not the byte payload should be sent
+// OversizedMessage indicates whether the byte payload should be sent
 // via TCP.
 func OversizedMessage(b []byte, size int) bool {
 	return len(b) > size/2
-}
-
-func lookupIPAddr(host string, ipv6 bool) (addr string, err error) {
-	host, port, err := net.SplitHostPort(host)
-	if err != nil {
-		var ae *net.AddrError
-		if errors.As(err, &ae) {
-			host = ae.Addr
-		} else {
-			return
-		}
-	}
-
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		return
-	}
-	for _, ip := range ips {
-		if ipv6 && ip.To16() != nil {
-			addr = ip.String()
-			break
-		} else if ip.To4() != nil {
-			addr = ip.String()
-			break
-		}
-	}
-	if port != "" {
-		addr = net.JoinHostPort(addr, port)
-	}
-	return
 }

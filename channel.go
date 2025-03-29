@@ -46,7 +46,7 @@ func (c *Channel) Broadcast(msg []byte) error {
 	if err != nil {
 		return err
 	}
-	if OversizedMessage(b, c.peer.membersConfig.UDPBufferSize) {
+	if OversizedMessage(b, c.peer.MembersConfig.UDPBufferSize) {
 		c.peer.SendReliable(b)
 	} else {
 		c.peer.delegate.broadcasts.QueueBroadcast(broadcast(b))

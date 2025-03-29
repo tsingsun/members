@@ -40,7 +40,7 @@ func main() {
 		panic(err)
 	}
 	log.Printf("Local node %s\n", group.Address())
-	group.Options.KnownPeers = ms
+	group.Options.ExistsPeers = ms
 	if err = group.Join(context.Background()); err != nil {
 		panic(err)
 	}
@@ -115,6 +115,7 @@ func (o orderHandler) Merge(b []byte) error {
 }
 
 func (o orderHandler) Receive(ord *order) error {
+	o.orders[ord.OrderID] = ord
 	bs, err := msgpack.Marshal([]*order{ord})
 	if err != nil {
 		return err

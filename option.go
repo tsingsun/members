@@ -9,17 +9,21 @@ import (
 type Option func(*Options)
 
 type Options struct {
-	ID         string                   `yaml:"id" json:"id"`
-	Cnf        *conf.Configuration      `yaml:"-" json:"-"`
-	KnownPeers []string                 `yaml:"known" json:"known"`
-	Event      memberlist.EventDelegate `yaml:"event" json:"event"`
-	Delegate   memberlist.Delegate      `yaml:"delegate" json:"delegate"`
-	JoinTTL    time.Duration            `yaml:"joinTTL" json:"joinTTL"`
-	JoinRetry  int                      `yaml:"joinRetry" json:"joinRetry"`
+	// ExistsPeers is the list of known peers to join
+	ExistsPeers []string      `yaml:"existsPeers" json:"existsPeers"`
+	JoinTTL     time.Duration `yaml:"joinTTL" json:"joinTTL"`
+	JoinRetry   int           `yaml:"joinRetry" json:"joinRetry"`
+	// MembersConfig is the memberlist.Config for the peer.
+	// note that: bind address should be ip address, not hostname.
+	MembersConfig *memberlist.Config `yaml:"membersConfig" json:"membersConfig"`
+
+	cnf      *conf.Configuration
+	Event    memberlist.EventDelegate `yaml:"-" json:"-"`
+	Delegate memberlist.Delegate      `yaml:"-" json:"-"`
 }
 
 func WithConfiguration(cnf *conf.Configuration) Option {
 	return func(options *Options) {
-		options.Cnf = cnf
+		options.cnf = cnf
 	}
 }
