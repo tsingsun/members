@@ -1,8 +1,11 @@
 # members
 
+[![Language](https://img.shields.io/badge/Language-Go-blue.svg)](https://golang.org/)
 [![Go Report Card](https://goreportcard.com/badge/github.com/tsingsun/members)](https://goreportcard.com/report/github.com/tsingsun/members)
-[![Coverage Status](https://coveralls.io/repos/github/tsingsun/members/badge.svg?branch=main)](https://coveralls.io/github/tsingsun/members?branch=main)
+[![codecov](https://codecov.io/gh/tsingsun/members/branch/main/graph/badge.svg)](https://codecov.io/gh/tsingsun/members)
 [![Build Status](https://github.com/tsingsun/members/actions/workflows/ci.yml/badge.svg)](https://github.com/tsingsun/members/actions)
+[![Release](https://img.shields.io/github/release/tsingsun/members.svg?style=flat-square)](https://github.com/tsingsun/members/releases)
+[![GoDoc](https://pkg.go.dev/badge/github.com/tsingsun/members?status.svg)](https://pkg.go.dev/github.com/tsingsun/members?tab=doc)
 
 this project is base on hashicorp memberlist library.
 
