@@ -1,6 +1,10 @@
 # members
 
-hashicorp memberlist extension
+[![Go Report Card](https://goreportcard.com/badge/github.com/tsingsun/members)](https://goreportcard.com/report/github.com/tsingsun/members)
+[![Coverage Status](https://coveralls.io/repos/github/tsingsun/members/badge.svg?branch=main)](https://coveralls.io/github/tsingsun/members?branch=main)
+[![Build Status](https://github.com/tsingsun/members/actions/workflows/ci.yml/badge.svg)](https://github.com/tsingsun/members/actions)
+
+this project is base on hashicorp memberlist library.
 
 ## Usage
 
@@ -37,7 +41,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	group.Options.KnownPeers = ms
+	group.Options.ExistsPeers = ms
 	if err = group.Join(context.Background()); err != nil {
 		panic(err)
 	}
@@ -64,25 +68,31 @@ func (OrderHandler) Name() string {
 }
 
 // MarshalBinary marshals the shard data into a binary to sync other nodes.
-func (OrderHandler) MarshalBinary() ([]byte, error) {
-	panic("implement me")
+func (o *OrderHandler) MarshalBinary() ([]byte, error) {
+	return msgpack.Marshal(o.Orders)
 }
 
 // Merge data from remote node MarshalBinary result. The Shard should be able to dedupe the data.
-func (OrderHandler) Merge(b []byte) error {
-	panic("implement me")
+func (o *OrderHandler) Merge(b []byte) error {
+	var ors []string
+	if err := msgpack.Unmarshal(b, &ors); err != nil {
+		return err
+	}
+	for _, ord := range ors {
+		if !strings.Contains(ord, "order") {
+			continue
+        }
+		o.Orders = append(o.Orders, ord)
+	}
+	return nil
 }
 
-func (o OrderHandler) Receive(ord string) error {
+
+func (o *OrderHandler) Receive(ord string) error {
+	o.Orders = append(o.Orders, ord)
 	bs, err := msgpack.Marshal([]string{ord})
 	if err != nil {
 		return err
 	}
 	return o.Spreader.Broadcast(bs)
 }
-
-```
-
-plz See [example](./example)
-
-Notice: The Best Practice is to use array object and version control to sync the data.

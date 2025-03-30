@@ -2,8 +2,6 @@ module github.com/tsingsun/members
 
 go 1.22
 
-toolchain go1.23.4
-
 require (
 	github.com/hashicorp/memberlist v0.5.3
 	github.com/stretchr/testify v1.9.0

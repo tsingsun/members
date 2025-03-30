@@ -30,7 +30,7 @@ func main() {
 	}
 
 	cnf := conf.NewFromStringMap(map[string]any{
-		"memberList": map[string]any{
+		"membersConfig": map[string]any{
 			"bindPort":       0,
 			"gossipInterval": "1m",
 		},
